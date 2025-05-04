@@ -1,5 +1,7 @@
 #pragma once
 
+#include <pthread.h>
+
 #define DEFAULT_BUFFER_SIZE 64
 #define DEFAULT_THREADS 4
 #define DEFAULT_SCHED_ALGO 0		// 0 - FIFO, 1 - SFF, 2 - RANDOM
@@ -11,3 +13,9 @@ extern int num_threads;
 
 void request_handle(int fd);
 void* thread_request_serve_static(void* arg);
+
+typedef struct Node {
+    int fd;
+    struct Node *next;
+    pthread_mutex_t lock;
+} Node;

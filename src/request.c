@@ -1,5 +1,6 @@
 #include "io_helper.h"
 #include "request.h"
+#include <pthread.h>
 
 #define MAXBUF (8192)
 
@@ -11,6 +12,34 @@ int scheduling_algo = DEFAULT_SCHED_ALGO;
 //
 //	TODO: add code to create and manage the buffer
 //
+int buf_count;
+
+static Node *HEAD = NULL;
+
+void insert_request(int fd, int buf_position) {
+  if (buf_count == buffer_max_size) {
+    close_or_die(fd);
+  }
+
+  pthread_mutex_lock(&(HEAD->lock));
+
+  if (HEAD == NULL) {
+    HEAD->fd = fd;
+    HEAD->next = NULL;
+  }
+
+  Node *curr = HEAD;
+  for (int i = 0; i < (buf_position - 1); i ++) {
+    curr = curr->next;
+  }
+
+  Node *newnode;
+  newnode->fd = fd;
+  newnode->next = curr->next;
+  curr->next = newnode;
+
+  pthread_mutex_lock(&(HEAD->lock));
+}
 
 //
 // Sends out HTTP response in case of errors
@@ -171,6 +200,8 @@ void request_handle(int fd) {
 		return;
     }
     
+  // TODO: provide directory traversal prevention
+
 	// verify if requested content is static
     if (is_static) {
 		if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
