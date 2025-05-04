@@ -1,6 +1,7 @@
 #include "io_helper.h"
 #include "request.h"
 #include <pthread.h>
+#include <stdlib.h>
 
 #define MAXBUF (8192)
 
@@ -16,29 +17,27 @@ int buf_count;
 
 static Node *HEAD = NULL;
 
-void insert_request(int fd, int buf_position) {
+void insert_request(Node *newnode, int buf_position) {
   if (buf_count == buffer_max_size) {
     close_or_die(fd);
   }
 
-  pthread_mutex_lock(&(HEAD->lock));
-
   if (HEAD == NULL) {
-    HEAD->fd = fd;
-    HEAD->next = NULL;
+    HEAD = newnode;
+  } else if (HEAD != NULL && buf_position == 1) {
+    newnode->next = HEAD;
+    HEAD = newnode;
+  } else {
+    Node *curr = HEAD;
+    for (int i = 0; i < (buf_position - 1); i ++) {
+      curr = curr->next;
+    }
+
+    newnode->next = curr->next;
+    curr->next = newnode;
   }
 
-  Node *curr = HEAD;
-  for (int i = 0; i < (buf_position - 1); i ++) {
-    curr = curr->next;
-  }
-
-  Node *newnode;
-  newnode->fd = fd;
-  newnode->next = curr->next;
-  curr->next = newnode;
-
-  pthread_mutex_lock(&(HEAD->lock));
+  buf_count ++;
 }
 
 //
@@ -168,6 +167,8 @@ void request_serve_static(int fd, char *filename, int filesize) {
 void* thread_request_serve_static(void* arg)
 {
 	// TODO: write code to actualy respond to HTTP requests
+
+  close_or_die(fd);
 }
 
 //
@@ -203,15 +204,67 @@ void request_handle(int fd) {
   // TODO: provide directory traversal prevention
 
 	// verify if requested content is static
-    if (is_static) {
+  if (is_static) {
 		if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
 			request_error(fd, filename, "403", "Forbidden", "server could not read this file");
 			return;
 		}
 		
-		// TODO: write code to add HTTP requests in the buffer based on the scheduling policy
+	// TODO: write code to add HTTP requests in the buffer based on the scheduling policy
+  Node *newnode;
+  newnode->fd = fd;
+  newnode->size = sbuf.st_size;
 
-    } else {
-		request_error(fd, filename, "501", "Not Implemented", "server does not serve dynamic content request");
+  pthread_mutex_lock(&(newnode->lock));
+  pthread_mutex_lock(&(HEAD->lock));
+  
+  switch (scheduling_algo) {
+      case 0:
+        if (buf_count < buffer_max_size) {
+          insert_request(newnode, buf_count);
+        } else {
+          close_or_die(newnode->fd);
+        }
+
+        break;
+    
+      case 1:
+        Node *curr = HEAD;
+        int tracker = 0;
+
+        while (curr->next != NULL && curr->size <= newnode->size) {
+          curr = curr->next;
+
+          tracker ++;
+        }
+
+        if (curr->next == NULL) {
+          tracker ++;
+        }
+
+        if (tracker < buffer_max_size) {
+          insert_request(newnode, tracker);
+        } else {
+          close_or_die(newnode->fd);
+        }
+
+        break;
+
+      case 2:
+        int rando = rand() % buf_count;
+
+        if (buf_count < buffer_max_size) {
+          insert_request(newnode, rando);
+        } else {
+          close_or_die(newnode->fd);
+        }
+
+        break;
     }
+
+    pthread_mutex_unlock(&(HEAD->lock));
+    pthread_mutex_unlock(&(newnode->lock));
+  } else {
+		request_error(fd, filename, "501", "Not Implemented", "server does not serve dynamic content request");
+  }
 }

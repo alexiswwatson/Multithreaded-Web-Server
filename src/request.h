@@ -16,6 +16,7 @@ void* thread_request_serve_static(void* arg);
 
 typedef struct Node {
     int fd;
+    off_t size;
     struct Node *next;
     pthread_mutex_t lock;
 } Node;
