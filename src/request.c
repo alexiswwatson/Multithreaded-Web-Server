@@ -3,6 +3,10 @@
 
 #define MAXBUF (8192)
 
+// below default values are defined in 'request.h'
+int num_threads = DEFAULT_THREADS;
+int buffer_max_size = DEFAULT_BUFFER_SIZE;
+int scheduling_algo = DEFAULT_SCHED_ALGO;
 
 //
 //	TODO: add code to create and manage the buffer

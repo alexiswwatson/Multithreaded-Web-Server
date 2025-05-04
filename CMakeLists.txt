@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(cyb3053_project3 C)
+project(multithreaded-web-server C)
 
 set(CMAKE_C_STANDARD 11)
 
