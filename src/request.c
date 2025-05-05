@@ -1,5 +1,6 @@
 #include "io_helper.h"
 #include "request.h"
+#include "limits.h"
 #include <pthread.h>
 #include <stdlib.h>
 
@@ -227,8 +228,24 @@ void request_handle(int fd) {
 		request_error(fd, filename, "404", "Not found", "server could not find this file");
 		return;
     }
-    
-  // TODO: provide directory traversal prevention
+
+  // TODO: write code to prevent directory traversal
+  char *real_fpath = realpath(filename, NULL);
+  char *real_dpath = realpath(".", NULL);
+  
+  if (real_fpath && real_dpath) {
+    if (strncmp(real_fpath, real_dpath, strlen(real_dpath)) != 0) {
+      request_error(fd, real_fpath, "403", "Forbidden", "server could not access this directory");
+
+      free(real_fpath);
+      free(real_dpath);
+
+      return;
+    }
+  }
+
+  free(real_fpath);
+  free(real_dpath);
 
 	// verify if requested content is static
   if (is_static) {
