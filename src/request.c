@@ -10,6 +10,9 @@ int num_threads = DEFAULT_THREADS;
 int buffer_max_size = DEFAULT_BUFFER_SIZE;
 int scheduling_algo = DEFAULT_SCHED_ALGO;
 
+pthread_mutex_t buffer_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t buffer_not_empty = PTHREAD_COND_INITIALIZER;
+
 //
 //	TODO: add code to create and manage the buffer
 //
@@ -19,7 +22,7 @@ static Node *HEAD = NULL;
 
 void insert_request(Node *newnode, int buf_position) {
   if (buf_count == buffer_max_size) {
-    close_or_die(fd);
+    close_or_die(newnode->fd);
   }
 
   if (HEAD == NULL) {
@@ -38,6 +41,16 @@ void insert_request(Node *newnode, int buf_position) {
   }
 
   buf_count ++;
+}
+
+Node *remove_request() {
+  Node *oldnode = HEAD;
+
+  HEAD = oldnode->next;
+
+  buf_count --;
+
+  return oldnode;
 }
 
 //
@@ -164,11 +177,25 @@ void request_serve_static(int fd, char *filename, int filesize) {
 //
 // Fetches the requests from the buffer and handles them (thread logic)
 //
-void* thread_request_serve_static(void* arg)
-{
+void* thread_request_serve_static(void* arg) {
 	// TODO: write code to actualy respond to HTTP requests
+  while (1) {
+    pthread_mutex_lock(&buffer_lock);
 
-  close_or_die(fd);
+    while (buf_count == 0) {
+      pthread_cond_wait(&buffer_not_empty, &buffer_lock);
+    }
+
+    Node *request = remove_request();
+
+    pthread_mutex_unlock(&buffer_lock);
+
+    request_serve_static(request->fd, request->name, request->size);
+
+    close_or_die(request->fd);
+    free(request->name);
+    free(request);
+  }
 }
 
 //
@@ -211,12 +238,13 @@ void request_handle(int fd) {
 		}
 		
 	// TODO: write code to add HTTP requests in the buffer based on the scheduling policy
-  Node *newnode;
+  Node *newnode = malloc(sizeof(Node));
   newnode->fd = fd;
   newnode->size = sbuf.st_size;
+  newnode->name = malloc(MAXBUF);
+  strcpy(newnode->name, filename);
 
-  pthread_mutex_lock(&(newnode->lock));
-  pthread_mutex_lock(&(HEAD->lock));
+  pthread_mutex_lock(&buffer_lock);
   
   switch (scheduling_algo) {
       case 0:
@@ -262,8 +290,8 @@ void request_handle(int fd) {
         break;
     }
 
-    pthread_mutex_unlock(&(HEAD->lock));
-    pthread_mutex_unlock(&(newnode->lock));
+    pthread_cond_signal(&buffer_not_empty);
+    pthread_mutex_unlock(&buffer_lock);
   } else {
 		request_error(fd, filename, "501", "Not Implemented", "server does not serve dynamic content request");
   }
